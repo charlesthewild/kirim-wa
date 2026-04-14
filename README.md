@@ -1,90 +1,62 @@
 # KIRIM WA
 
-A high-performance, distributed messaging engine built for resilience and account safety. This system utilizes a **Database-Driven Asynchronous Architecture** to orchestrate complex messaging campaigns across multiple WhatsApp accounts simultaneously.
+[English](#english) | [Bahasa Indonesia](#bahasa-indonesia)
 
 ---
 
-## Core Architecture: The "Global Pool" Logic
+<a name="english"></a>
+## English
 
-The system is built on a **Decoupled Architecture**, meaning the list of recipients (The Job) is entirely separate from the phones (The Workers). This allows for a "Pull-Based" distribution model.
+This system utilizes a **Database-Driven Asynchronous Architecture** to orchestrate complex campaigns across multiple accounts simultaneously.
 
-### 1. Database-Driven Recipient Groups
-Instead of processing numbers in real-time from a UI input, the system utilizes a persistent SQLite backend:
-* **Intelligent Parsing:** When numbers are pasted into the UI, the engine uses a Regex sanitizer to extract digits, ignoring spaces, dashes, brackets, and non-numeric text.
-* **Persistence & De-duplication:** Numbers are stored in indexed **Groups**. The engine performs a collision check to ensure no duplicate numbers exist within the same group, saving database overhead and preventing double-messaging.
-* **Cold Storage Strategy:** By keeping recipients in the database, the UI remains lightweight. The system only loads the necessary "chunk" of numbers when a campaign begins.
+### Core Architecture: The "Global Pool" Logic
+The system is built on a **Decoupled Architecture**, where the list of recipients is separate from the phones (Workers), allowing a "Pull-Based" distribution.
 
-### 2. Asynchronous Worker Pull System
-The Workers (linked WhatsApp accounts) act as independent processors that "compete" for tasks.
-* **The Pending Bucket:** When a campaign starts, all recipients are moved to a `queue` table with a `pending` status.
-* **Polling & Locking:** Each active Worker runs an independent asynchronous loop. It polls the database for the next `pending` row. To prevent race conditions, the engine uses an **Atomic Update (Grab & Lock)**:
-    1. Worker finds a `pending` row.
-    2. Worker immediately updates the status to `processing` and stamps it with its `Worker_ID`.
-    3. Other workers are now ignored for that specific row.
-* **Fault Tolerance:** If a Worker crashes or its phone loses internet, the status of its current task remains `processing`. If the system detects a stale process, the task is reverted to `pending` so another Worker can finish the job.
+* **Database-Driven Groups:** Numbers are sanitized via Regex and de-duplicated automatically on import.
+* **Asynchronous Worker Pull:** Workers "compete" for tasks. They poll the database for `pending` rows and "lock" them to prevent double-sending.
+* **Fault Tolerance:** If a worker crashes, the task reverts to `pending` so others can finish the job.
 
----
-
-## The "Human-Mimic" Strategic Engine
-
-To bypass automated spam filters, the engine generates a unique "Digital Fingerprint" for every single interaction through three layers of randomization.
-
-### 1. The Variable & Shuffle Engine
-The system moves away from static templates toward a **Possibility Matrix**.
-* **Global Variables:** Users define a library of variables (e.g., `{{greetings}}`). Each variable contains a list of options (e.g., *Hi, Hello, Hey, Greetings*).
-* **The Shuffle Logic:** * The engine scans the template for `{{tags}}`.
-    * It performs a random selection from the variable’s values for *each* recipient.
-    * **Result:** If a template has 4 variables with 4 options each, there are **256 unique versions** of that message. This prevents WhatsApp from detecting the "identical byte-code" signature common in bot broadcasts.
-
-### 2. Non-Linear Delay Logic
-Bots are often caught because they send messages at fixed intervals (e.g., every 30 seconds). 
-* **Dynamic Wait:** The Worker calculates a new, random integer between the **Min Delay** and **Max Delay** for *every* message. 
-* **Result:** The sending rhythm is unpredictable (e.g., 22s, then 39s, then 25s), mimicking the irregular pace of a human manual sender.
-
-### 3. The Batch & Rest Orchestrator
-To simulate a natural work-rest cycle, the engine uses a **Threshold-Based Pausing** strategy.
-* **Batching:** Users define a **Batch Size** (e.g., 30 messages). The Worker tracks its internal counter.
-* **Rest Mode:** Once the limit is hit, the Worker switches to a `resting` state and sets a "Wake-up" timestamp. 
-* **Background Idling:** During rest, the Headless Browser remains open but idle, consuming minimal VPS resources. Once the rest period ends, the Worker automatically resumes its polling of the `pending` queue.
+### The "Human-Mimic" Strategic Engine
+* **Unique Identities:** Each worker is assigned a unique **User Agent**. You can also assign an optional **Proxy** per worker to ensure each phone operates from a unique IP.
+* **Non-Linear Timing (Min/Max Delay):** Between every message, the worker waits for a random number of seconds based on your **Min and Max Delay** settings. This removes the predictable rhythm that triggers bot detection.
+* **Intelligent Validation:** Before sending, the system checks if a number is registered on WhatsApp. Non-registered numbers are automatically skipped.
+* **Presence Simulation:** Workers set status to "Online" and simulate a **Typing Delay** based on the specific message length before hitting send.
+* **Shuffle Engine (Spintax):** Uses variable tags to create unique permutations for every single message.
+* **Batch, Rest & Health Check:** Workers take breaks after a set **Batch Size**. During "Rest Mode," the system performs a **Health Check** to ensure the session is still active and connected.
 
 ---
 
-## Detailed User Workflow
+<a name="bahasa-indonesia"></a>
+## Bahasa Indonesia
 
-### Step 1: Data Preparation (UI)
-1. Navigate to the **Recipients** section.
-2. Create a **New Group** (e.g., "August Leads").
-3. Paste your list of numbers into the textarea. The backend automatically extracts digits and cleans the input.
+Sistem ini menggunakan **Arsitektur Asinkron Berbasis Database** memastikan  data dan antrian pesan tidak terganggu ketika server atau workers mengalami gangguan seperti terputus dari jaringan, gagal tersinkron dengan handphone yang terhubung. Status Antrian pesan akan kembali ke `pending` dan di pegang alih oleh workers yang masih aktif.
 
-### Step 2: Content Personalization
-1. Create **Global Variables** in the library (e.g., greetings, intros).
-2. Draft your **Message Template** using the variable tags.
-3. Use the **Shuffle Preview** button to verify the randomization logic.
+### Arsitektur Inti: Logika "Global Pool"
+Sistem ini menggunakan **Arsitektur Terdekopel**, di mana daftar penerima terpisah dari ponsel (Worker), memungkinkan distribusi berbasis "Pull".
 
-### Step 3: Worker Deployment (Adding Workers)
-1. Navigate to **Workers** and click "Add Worker."
-2. Scan the generated **QR Code** with your phone's WhatsApp.
-3. **Strategic Note:** The system uses `LocalAuth` to save your session in the `.wwebjs_auth` directory, ensuring you don't have to re-scan if the server reboots.
+* **Grup Berbasis Database:** Daftar nomor di sanitasi dengan Regex untuk mencegah diduplikasi atau nomor tidak valid secara otomatis saat diimpor.
+* **Sistem Pull Worker Asinkron:** Worker secara bergantian mengirimkan pesan. Mereka mengambil antrian dengan status `pending` dari database dan "menguncinya" agar tidak diambil worker lain dan menghindari pengiriman ganda.
+* **Crash Handling:** Jika worker crash, tugas dikembalikan ke status `pending` agar bisa diselesaikan oleh worker lain.
 
-### Step 4: Campaign Execution
-1. Select your **Recipient Group** and **Template**.
-2. Configure **Safety Settings**: Min/Max Delay, Batch Size, and Rest Time.
-3. **Start:** Monitor the real-time logs as Workers pull tasks from the queue.
-
----
-
-## Maintenance & VPS Strategy
-* **Zero-Footprint Deletion:** When a Worker is removed, the engine kills the background process and deletes the physical session folder to save disk space.
-* **PM2 Resilience:** The engine is managed as a persistent service. If a browser crashes, it is automatically revived to resume the asynchronous loop.
+### Mencegah Worker Teridentifikasi sebagai oleh WhatsApp.
+* **User Agent/Browser:** Worker berjalan di atas Headless Browder dengan Puppeteer.Setiap worker memiliki **User Agent** berbeda (Chrome Windows/Mozilla Linux/Mac OS). User dapat menambahkan **Proxy** per worker agar setiap worker beroperasi dari IP yang berbeda. Jika tidak menambahkan proxy, worker akan mengirim pesan melalui IP Server. Sangat disarankan Worker memiliki Proxy.
+* **waktu non-linear (Jeda Min/Max):** Di antara setiap pesan, worker menunggu selama beberapa detik secara acak berdasarkan pengaturan **Jeda Minimal dan Maksimal**. Ini menghapus pola kaku berulang yang biasanya memicu deteksi bot.
+* **Validasi Nomor:** Sebelum mengirim, sistem mengecek apakah nomor terdaftar di WhatsApp. Nomor yang tidak terdaftar akan otomatis dilewati.
+* **Online Status:** Worker mengirimkan status "Online" dan mensimulasikan **Mengetik** berdasarkan panjang pesan sebelum mengirim.
+* **Shuffle Engine (Spintax):** Menggunakan tag variabel untuk membuat template unik di setiap pesan.
+* **Batch, Rest & Health Check:** Worker akan berhenti mengirimkan pesan setelah mencapai **Batch Size** tertentu. dan beralih ke "Rest Mode", sistem melakukan **Health Check** untuk memastikan sesi tetap aktif.
 
 ---
 
 ### **Strategy Summary Table**
 
-| Component | User Experience (UI) | Strategic Logic (The Hood) |
+| Component | UI Action | Strategic Logic (The Hood) |
 | :--- | :--- | :--- |
-| **Recipient Lists** | Paste messy text into a box. | Regex parsing + SQL indexing + De-duplication. |
-| **Messaging** | Write one template with tags. | **Shuffle Engine** creates unique permutations. |
-| **Pacing** | Set Min/Max sliders. | **Non-Linear Delay** eliminates bot signatures. |
-| **Volume Control** | Set Batch/Rest numbers. | **Batch Orchestrator** mimics human breaks. |
-| **Multi-Phone** | Connect multiple devices. | **Asynchronous Pull** load-balances the queue. |
+| **Identities** | Add Worker | Unique User Agents + Optional Proxy support. |
+| **Recipients** | Paste messy text. | Regex cleaning + SQL indexing + De-duplication. |
+| **Validation** | Automatic. | Pre-send check to skip non-registered numbers. |
+| **Humanizing** | Automatic. | Typing Delay (Length-based) + Online Status. |
+| **Pacing** | Min/Max Delay. | **Randomized intervals** to eliminate bot signatures. |
+| **Endurance** | Batch/Rest settings. | Rest Mode with integrated Health Checks. |
+| **Multi-Phone** | Connect devices. | Asynchronous Pull load-balances the queue. |
+
